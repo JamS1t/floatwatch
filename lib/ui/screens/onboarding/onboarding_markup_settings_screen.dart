@@ -15,7 +15,7 @@ class OnboardingMarkupSettingsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Markup Settings')),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,7 +61,7 @@ class OnboardingMarkupSettingsScreen extends StatelessWidget {
                 color: AppColors.warning,
                 hint: 'e.g. ₱5 per bracket',
               ),
-              const Spacer(),
+              const SizedBox(height: 24),
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -100,6 +100,7 @@ class OnboardingMarkupSettingsScreen extends StatelessWidget {
     );
   }
 }
+
 
 class _MarkupRow extends StatelessWidget {
   final String label;

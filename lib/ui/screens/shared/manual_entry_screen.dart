@@ -83,11 +83,41 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
     super.dispose();
   }
 
+  /// Returns the current running GCash balance based on opening balance + today's totals.
+  int _currentGcash(DailyFloatProvider float, TransactionProvider txProv) {
+    final totals = txProv.dailyTotals;
+    return MarkupCalculator.expectedClosingGcash(
+      openingGcash: float.todayFloat?.openingGcashBalance ?? 0,
+      totalCashIn: totals['total_cash_in'] ?? 0,
+      totalCashOut: totals['total_cash_out'] ?? 0,
+      totalBillsPayment: totals['total_bills_payment'] ?? 0,
+      totalLoadOthers: totals['total_load_others'] ?? 0,
+    );
+  }
+
+  /// Returns the current running cash balance.
+  int _currentCash(DailyFloatProvider float, TransactionProvider txProv) {
+    final totals = txProv.dailyTotals;
+    return (float.todayFloat?.openingCash ?? 0) +
+        (totals['total_cash_in'] ?? 0) +
+        (totals['total_bills_payment'] ?? 0) +
+        (totals['total_load_others'] ?? 0) -
+        (totals['total_cash_out'] ?? 0);
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
     final store = context.read<StoreProvider>();
     final float = context.read<DailyFloatProvider>();
+
+    if (!float.isDayOpen) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Day is closed. Please open a new day first.')),
+      );
+      return;
+    }
     final txProv = context.read<TransactionProvider>();
     final auth = context.read<AuthProvider>();
 
@@ -106,11 +136,78 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
       return;
     }
 
+    final amountCentavos =
+        CurrencyFormatter.parseToCentavos(_amountCtrl.text);
+
+    // ── Balance validation ────────────────────────────────────────────────
+    // GCash-consuming: Cash In, Bills Payment, Load/Others
+    final consumesGcash = _selectedType == AppConstants.txCashIn ||
+        _selectedType == AppConstants.txBillsPayment ||
+        _selectedType == AppConstants.txLoadOthers;
+    // Cash-consuming: Cash Out
+    final consumesCash = _selectedType == AppConstants.txCashOut;
+
+    if (consumesGcash) {
+      final available = _currentGcash(float, txProv);
+      if (amountCentavos > available) {
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Insufficient GCash Balance'),
+            content: Text(
+              'Available GCash: ${CurrencyFormatter.format(available)}\n'
+              'Transaction amount: ${CurrencyFormatter.format(amountCentavos)}\n\n'
+              'This transaction exceeds your current GCash balance. Proceed anyway?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Proceed',
+                    style: TextStyle(color: AppColors.danger)),
+              ),
+            ],
+          ),
+        );
+        if (proceed != true) return;
+      }
+    } else if (consumesCash) {
+      final available = _currentCash(float, txProv);
+      if (amountCentavos > available) {
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Insufficient Cash Balance'),
+            content: Text(
+              'Available cash: ${CurrencyFormatter.format(available)}\n'
+              'Transaction amount: ${CurrencyFormatter.format(amountCentavos)}\n\n'
+              'This transaction exceeds your current cash on hand. Proceed anyway?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Proceed',
+                    style: TextStyle(color: AppColors.danger)),
+              ),
+            ],
+          ),
+        );
+        if (proceed != true) return;
+      }
+    }
+
     final ok = await txProv.addTransaction(
       storeId: store.currentStore!.id!,
       dailyFloatId: float.todayFloat!.id!,
       transactionType: _selectedType,
-      amountCentavos: CurrencyFormatter.parseToCentavos(_amountCtrl.text),
+      amountCentavos: amountCentavos,
       markupSettings: markup,
       entryMethod: auth.isOwnerLoggedIn
           ? AppConstants.entryManualOwner
@@ -129,6 +226,11 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
   @override
   Widget build(BuildContext context) {
     final isLoading = context.watch<TransactionProvider>().isLoading;
+    final float = context.watch<DailyFloatProvider>();
+    final txProv = context.watch<TransactionProvider>();
+
+    final availableGcash = _currentGcash(float, txProv);
+    final availableCash = _currentCash(float, txProv);
 
     return LoadingOverlay(
       isLoading: isLoading,
@@ -142,6 +244,70 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ── Running balance banner ─────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.divider),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('GCash Available',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textSecondary)),
+                              Text(
+                                CurrencyFormatter.format(availableGcash),
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: availableGcash >= 0
+                                      ? AppColors.primary
+                                      : AppColors.danger,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                            width: 1,
+                            height: 32,
+                            color: AppColors.divider),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Cash Available',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textSecondary)),
+                                Text(
+                                  CurrencyFormatter.format(availableCash),
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: availableCash >= 0
+                                        ? AppColors.textPrimary
+                                        : AppColors.danger,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                   // Transaction type selector
                   const Text('Transaction Type',
                       style: TextStyle(

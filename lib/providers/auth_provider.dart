@@ -129,6 +129,7 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> createOwner({
     required String name,
     required String mobileNumber,
+    required String gcashNumber,
     required String pin,
     required String storeMode,
   }) async {
@@ -139,6 +140,7 @@ class AuthProvider extends ChangeNotifier {
       final owner = OwnerModel(
         name: name,
         mobileNumber: mobileNumber,
+        gcashNumber: gcashNumber,
         pinHash: _security.hashPin(pin),
         storeMode: storeMode,
         createdAt: now,

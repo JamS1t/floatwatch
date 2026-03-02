@@ -31,4 +31,7 @@ abstract class IDailyFloatRepository {
 
   /// Mark the day as closed.
   Future<void> closeDay(int dailyFloatId);
+
+  /// Re-open a closed day: resets is_closed, clears closing fields, status → 'open'.
+  Future<void> reopenDay(int dailyFloatId);
 }

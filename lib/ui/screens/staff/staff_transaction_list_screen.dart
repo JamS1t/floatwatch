@@ -38,6 +38,7 @@ class StaffTransactionListScreen extends StatelessWidget {
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (_, i) {
                 final t = transactions[i];
+                final byOwner = t.enteredByRole == 'owner';
                 return ListTile(
                   tileColor: AppColors.card,
                   shape: RoundedRectangleBorder(
@@ -55,9 +56,35 @@ class StaffTransactionListScreen extends StatelessWidget {
                         color: AppColors.transactionTypeColor(t.transactionType),
                         size: 20),
                   ),
-                  title: Text(t.transactionType.replaceAll('_', ' ').toUpperCase(),
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w600)),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          t.transactionType.replaceAll('_', ' ').toUpperCase(),
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      if (byOwner)
+                        Container(
+                          margin: const EdgeInsets.only(left: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryLight,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'By Owner',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                   subtitle: Text(DateFormatter.dbToDisplayDateTime(t.createdAt),
                       style: const TextStyle(fontSize: 11)),
                   trailing: Text(CurrencyFormatter.format(t.amount),

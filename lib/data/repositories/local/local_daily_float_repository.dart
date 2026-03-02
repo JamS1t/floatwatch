@@ -156,4 +156,31 @@ class LocalDailyFloatRepository implements IDailyFloatRepository {
       action: 'update',
     );
   }
+
+  @override
+  Future<void> reopenDay(int dailyFloatId) async {
+    final float = await getDailyFloat(dailyFloatId);
+    if (float == null) return;
+    final db = await _db.database;
+    await db.update(
+      _table,
+      {
+        'is_closed': 0,
+        'status': 'open',
+        'closing_gcash_balance': null,
+        'closing_cash': null,
+        'expected_gcash_balance': null,
+        'discrepancy_gcash': null,
+        'discrepancy_cash': null,
+        'updated_at': DateFormatter.nowDb(),
+      },
+      where: 'id = ?',
+      whereArgs: [dailyFloatId],
+    );
+    await _syncLog.log(
+      tableName: _table,
+      recordSyncId: float.syncId,
+      action: 'update',
+    );
+  }
 }

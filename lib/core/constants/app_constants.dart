@@ -11,7 +11,7 @@ class AppConstants {
 
   // ── Database ──────────────────────────────────────────────────────────────
   static const String databaseName = 'floatwatch.db';
-  static const int databaseVersion = 1;
+  static const int databaseVersion = 2;
 
   // ── Security ──────────────────────────────────────────────────────────────
   static const int maxFailedPinAttempts = 3;

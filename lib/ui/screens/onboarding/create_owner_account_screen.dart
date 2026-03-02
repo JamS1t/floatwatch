@@ -22,6 +22,7 @@ class _CreateOwnerAccountScreenState extends State<CreateOwnerAccountScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _mobileCtrl = TextEditingController();
+  final _gcashCtrl = TextEditingController();
   final _pinCtrl = TextEditingController();
   final _confirmPinCtrl = TextEditingController();
   bool _obscurePin = true;
@@ -36,6 +37,7 @@ class _CreateOwnerAccountScreenState extends State<CreateOwnerAccountScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _mobileCtrl.dispose();
+    _gcashCtrl.dispose();
     _pinCtrl.dispose();
     _confirmPinCtrl.dispose();
     super.dispose();
@@ -47,6 +49,7 @@ class _CreateOwnerAccountScreenState extends State<CreateOwnerAccountScreen> {
     final ok = await auth.createOwner(
       name: _nameCtrl.text.trim(),
       mobileNumber: _mobileCtrl.text.trim(),
+      gcashNumber: _gcashCtrl.text.trim(),
       pin: _pinCtrl.text,
       storeMode: _storeMode,
     );
@@ -115,6 +118,27 @@ class _CreateOwnerAccountScreenState extends State<CreateOwnerAccountScreen> {
                       }
                       if (!RegExp(r'^09\d{9}$').hasMatch(v.trim())) {
                         return 'Enter a valid PH mobile number.';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _gcashCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'GCash Number *',
+                      hintText: '09XXXXXXXXX',
+                      prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+                      helperText:
+                          'Used to identify your transactions from receipts.',
+                    ),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) {
+                        return 'GCash number is required.';
+                      }
+                      if (!RegExp(r'^09\d{9}$').hasMatch(v.trim())) {
+                        return 'Enter a valid PH GCash number (09XXXXXXXXX).';
                       }
                       return null;
                     },

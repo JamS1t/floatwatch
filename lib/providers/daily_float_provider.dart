@@ -175,6 +175,26 @@ class DailyFloatProvider extends ChangeNotifier {
     }
   }
 
+  // ── Reopen day ────────────────────────────────────────────────────────────
+
+  /// Reset a closed day back to open, clearing all closing/discrepancy fields.
+  Future<bool> reopenDay() async {
+    if (_todayFloat?.id == null) return false;
+    _setLoading(true);
+    try {
+      await _floatRepo.reopenDay(_todayFloat!.id!);
+      // Reload from DB so closing fields are correctly null in the model.
+      _todayFloat = await _floatRepo.getDailyFloat(_todayFloat!.id!);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _setError('Failed to re-open the day.');
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   void _setLoading(bool v) {

@@ -50,9 +50,11 @@ class DatabaseHelper {
     int oldVersion,
     int newVersion,
   ) async {
-    // TODO: Add migration scripts here when the schema is updated.
-    // Example:
-    //   if (oldVersion < 2) { await db.execute('ALTER TABLE ...'); }
+    if (oldVersion < 2) {
+      await db.execute(
+        "ALTER TABLE owners ADD COLUMN gcash_number TEXT NOT NULL DEFAULT ''",
+      );
+    }
   }
 
   // ── Table creation ────────────────────────────────────────────────────────
@@ -67,6 +69,7 @@ class DatabaseHelper {
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         name            TEXT    NOT NULL,
         mobile_number   TEXT    NOT NULL,
+        gcash_number    TEXT    NOT NULL DEFAULT '',
         pin_hash        TEXT    NOT NULL,
         store_mode      TEXT    DEFAULT 'solo',
         created_at      TEXT    NOT NULL,

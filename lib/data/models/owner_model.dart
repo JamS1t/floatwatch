@@ -3,6 +3,11 @@ class OwnerModel {
   final int? id;
   final String name;
   final String mobileNumber;
+
+  /// GCash partner outlet number — used to identify cash-in/cash-out
+  /// transactions when parsing receipts via OCR.
+  final String gcashNumber;
+
   final String pinHash; // SHA-256 hashed — never raw
   final String storeMode; // 'solo' | 'with_staff'
   final String createdAt;
@@ -13,6 +18,7 @@ class OwnerModel {
     this.id,
     required this.name,
     required this.mobileNumber,
+    required this.gcashNumber,
     required this.pinHash,
     this.storeMode = 'solo',
     required this.createdAt,
@@ -24,6 +30,7 @@ class OwnerModel {
         id: map['id'] as int?,
         name: map['name'] as String,
         mobileNumber: map['mobile_number'] as String,
+        gcashNumber: map['gcash_number'] as String? ?? '',
         pinHash: map['pin_hash'] as String,
         storeMode: map['store_mode'] as String? ?? 'solo',
         createdAt: map['created_at'] as String,
@@ -35,6 +42,7 @@ class OwnerModel {
         if (id != null) 'id': id,
         'name': name,
         'mobile_number': mobileNumber,
+        'gcash_number': gcashNumber,
         'pin_hash': pinHash,
         'store_mode': storeMode,
         'created_at': createdAt,
@@ -46,6 +54,7 @@ class OwnerModel {
     int? id,
     String? name,
     String? mobileNumber,
+    String? gcashNumber,
     String? pinHash,
     String? storeMode,
     String? createdAt,
@@ -56,6 +65,7 @@ class OwnerModel {
         id: id ?? this.id,
         name: name ?? this.name,
         mobileNumber: mobileNumber ?? this.mobileNumber,
+        gcashNumber: gcashNumber ?? this.gcashNumber,
         pinHash: pinHash ?? this.pinHash,
         storeMode: storeMode ?? this.storeMode,
         createdAt: createdAt ?? this.createdAt,

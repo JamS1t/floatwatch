@@ -28,6 +28,32 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
   }
 
+  Future<void> _confirmReopen() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Re-open Day?'),
+        content: const Text(
+          'This will re-open today\'s session. All closing data will be '
+          'cleared and you can continue adding transactions.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Re-open',
+                style: TextStyle(color: AppColors.primary)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await context.read<DailyFloatProvider>().reopenDay();
+  }
+
   Future<void> _loadData() async {
     final auth = context.read<AuthProvider>();
     final store = context.read<StoreProvider>();
@@ -97,72 +123,99 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
             // ── Float status ──────────────────────────────────────────────
             FloatStatusCard(
               dailyFloat: float.todayFloat,
-              onTap: () => float.hasTodayFloat
-                  ? context.push(Routes.endOfDayPreCheck)
-                  : context.push(Routes.openingBalance),
+              onTap: float.isDayOpen
+                  ? () => context.push(Routes.endOfDayPreCheck)
+                  : float.hasTodayFloat
+                      ? _confirmReopen   // closed float → offer re-open
+                      : () => context.push(Routes.openingBalance),
             ),
             const SizedBox(height: 20),
 
             // ── Quick actions ─────────────────────────────────────────────
-            const Text('Quick Actions',
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary)),
-            const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 3,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              childAspectRatio: 0.9,
-              children: [
-                QuickActionButton(
-                  icon: Icons.camera_alt_outlined,
-                  label: 'Upload\nReceipt',
-                  iconColor: AppColors.primary,
-                  backgroundColor: AppColors.primaryLight,
-                  onTap: () => context.push(Routes.batchUpload),
-                ),
-                QuickActionButton(
-                  icon: Icons.edit_outlined,
-                  label: 'Manual\nEntry',
-                  iconColor: AppColors.secondary,
-                  backgroundColor: AppColors.secondaryLight,
-                  onTap: () => context.push(Routes.manualEntry,
-                      extra: {'transactionType': 'cash_in'}),
-                ),
-                QuickActionButton(
-                  icon: Icons.bar_chart_rounded,
-                  label: 'Reports',
-                  iconColor: const Color(0xFF9333EA),
-                  backgroundColor: const Color(0xFFF3E8FF),
-                  onTap: () => context.push(Routes.reportsHome),
-                ),
-                QuickActionButton(
-                  icon: Icons.history_rounded,
-                  label: 'History',
-                  iconColor: AppColors.warning,
-                  backgroundColor: AppColors.warningLight,
-                  onTap: () => context.push(Routes.transactionHistory),
-                ),
-                QuickActionButton(
-                  icon: Icons.group_outlined,
-                  label: 'Staff',
-                  iconColor: AppColors.primary,
-                  backgroundColor: AppColors.primaryLight,
-                  onTap: () => context.push(Routes.staffManagement),
-                  badge: false, // TODO: badge=true if pending approvals > 0
-                ),
-                QuickActionButton(
-                  icon: Icons.nights_stay_outlined,
-                  label: 'Close Day',
-                  iconColor: AppColors.danger,
-                  backgroundColor: AppColors.dangerLight,
-                  onTap: () => context.push(Routes.endOfDayPreCheck),
-                ),
-              ],
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.divider),
+              ),
+              padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      'Quick Actions',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  GridView.count(
+                    crossAxisCount: 3,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisSpacing: 0,
+                    mainAxisSpacing: 4,
+                    childAspectRatio: 0.85,
+                    children: [
+                      QuickActionButton(
+                        icon: Icons.camera_alt_outlined,
+                        label: 'Upload\nReceipt',
+                        iconColor: AppColors.primary,
+                        backgroundColor: AppColors.primaryLight,
+                        onTap: float.isDayOpen
+                            ? () => context.push(Routes.batchUpload)
+                            : null,
+                      ),
+                      QuickActionButton(
+                        icon: Icons.edit_outlined,
+                        label: 'Manual\nEntry',
+                        iconColor: AppColors.secondary,
+                        backgroundColor: AppColors.secondaryLight,
+                        onTap: float.isDayOpen
+                            ? () => context.push(Routes.manualEntry,
+                                extra: {'transactionType': 'cash_in'})
+                            : null,
+                      ),
+                      QuickActionButton(
+                        icon: Icons.bar_chart_rounded,
+                        label: 'Reports',
+                        iconColor: const Color(0xFF9333EA),
+                        backgroundColor: const Color(0xFFF3E8FF),
+                        onTap: () => context.push(Routes.reportsHome),
+                      ),
+                      QuickActionButton(
+                        icon: Icons.history_rounded,
+                        label: 'History',
+                        iconColor: AppColors.warning,
+                        backgroundColor: AppColors.warningLight,
+                        onTap: () => context.push(Routes.transactionHistory),
+                      ),
+                      QuickActionButton(
+                        icon: Icons.group_outlined,
+                        label: 'Staff',
+                        iconColor: AppColors.primary,
+                        backgroundColor: AppColors.primaryLight,
+                        onTap: () => context.push(Routes.staffManagement),
+                      ),
+                      QuickActionButton(
+                        icon: Icons.nights_stay_outlined,
+                        label: 'Close Day',
+                        iconColor: AppColors.danger,
+                        backgroundColor: AppColors.dangerLight,
+                        onTap: float.isDayOpen
+                            ? () => context.push(Routes.endOfDayPreCheck)
+                            : null,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 20),
 

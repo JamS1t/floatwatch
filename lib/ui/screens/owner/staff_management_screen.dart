@@ -39,10 +39,12 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
       appBar: AppBar(
         title: const Text('Staff'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.person_add_outlined),
-            onPressed: () => context.push(Routes.addStaff).then((_) => _load()),
-          ),
+          if (_staff.isEmpty)
+            IconButton(
+              icon: const Icon(Icons.person_add_outlined),
+              onPressed: () =>
+                  context.push(Routes.addStaff).then((_) => _load()),
+            ),
         ],
       ),
       body: _loading
@@ -51,9 +53,32 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
               ? _buildEmpty(context)
               : ListView.separated(
                   padding: const EdgeInsets.all(16),
-                  itemCount: _staff.length,
+                  itemCount: _staff.length + 1,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
                   itemBuilder: (_, i) {
+                    if (i == _staff.length) {
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryLight,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.info_outline,
+                                size: 16, color: AppColors.primary),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Maximum of 1 staff per outlet reached.',
+                                style: TextStyle(
+                                    fontSize: 12, color: AppColors.primary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
                     final s = _staff[i];
                     return ListTile(
                       tileColor: AppColors.card,

@@ -91,6 +91,30 @@ class ReportProvider extends ChangeNotifier {
   }) async {
     _setLoading(true);
     try {
+      // If the day was re-opened and closed again a report already exists —
+      // update it instead of inserting a duplicate.
+      final existing =
+          await _reportRepo.getDailyReportByDate(storeId, DateFormatter.todayDb());
+
+      if (existing != null) {
+        final updated = existing.copyWith(
+          dailyFloatId: dailyFloatId,
+          totalTransactions: totals['total_transactions'] ?? 0,
+          totalCashInCount: totals['cash_in_count'] ?? 0,
+          totalCashOutCount: totals['cash_out_count'] ?? 0,
+          totalBillsPaymentCount: totals['bills_payment_count'] ?? 0,
+          totalLoadOthersCount: totals['load_others_count'] ?? 0,
+          totalGrossAmount: totals['total_gross_amount'] ?? 0,
+          totalMarkupEarned: totals['total_markup_earned'] ?? 0,
+          status: status,
+          notes: notes,
+        );
+        await _reportRepo.updateDailyReport(updated);
+        _reports = _reports.map((r) => r.id == updated.id ? updated : r).toList();
+        notifyListeners();
+        return true;
+      }
+
       final now = DateFormatter.nowDb();
       final report = DailyReportModel(
         storeId: storeId,
