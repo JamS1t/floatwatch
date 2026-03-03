@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'app.dart';
+import 'core/services/ocr_service.dart';
+import 'core/services/receipt_storage_service.dart';
 import 'core/services/security_service.dart';
 import 'core/services/subscription_service.dart';
 import 'data/database/database_helper.dart';
@@ -48,6 +50,11 @@ void main() async {
         // Singleton services (not ChangeNotifiers)
         Provider<SecurityService>.value(value: securityService),
         Provider<SubscriptionService>.value(value: subscriptionService),
+        Provider<OcrService>(
+          create: (_) => OcrService(),
+          dispose: (_, s) => s.dispose(),
+        ),
+        Provider<ReceiptStorageService>.value(value: ReceiptStorageService()),
         // Repositories exposed for screens that need direct DB access
         Provider<IStaffRepository>.value(value: staffRepo),
 

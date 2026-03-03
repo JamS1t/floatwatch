@@ -35,6 +35,7 @@ import 'ui/screens/settings/settings_screen.dart';
 import 'ui/screens/settings/subscription_screen.dart';
 import 'ui/screens/shared/batch_upload_screen.dart';
 import 'ui/screens/shared/manual_entry_screen.dart';
+import 'core/services/ocr_result.dart';
 import 'ui/screens/shared/ocr_review_screen.dart';
 import 'ui/screens/shared/transaction_success_screen.dart';
 import 'ui/screens/staff/manual_entry_pin_request_screen.dart';
@@ -237,7 +238,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: Routes.ocrReview,
       name: 'ocrReview',
-      builder: (_, __) => const OcrReviewScreen(),
+      builder: (_, state) {
+        final results = state.extra as List<OcrResult>;
+        return OcrReviewScreen(results: results);
+      },
     ),
     GoRoute(
       path: Routes.manualEntry,

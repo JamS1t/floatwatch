@@ -1,6 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/constants/app_constants.dart';
+import '../core/services/ocr_result.dart';
+import '../core/services/receipt_parser.dart';
+import '../core/services/receipt_storage_service.dart';
 import '../core/services/security_service.dart';
 import '../core/utils/date_formatter.dart';
 import '../core/utils/markup_calculator.dart';
@@ -119,6 +123,89 @@ class TransactionProvider extends ChangeNotifier {
     } catch (e) {
       _setError('Failed to save transaction. Please try again.');
       return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  // ── Batch OCR save ────────────────────────────────────────────────────────
+
+  /// Save a batch of OCR-processed receipts in chronological order.
+  /// Uses the receipt's extracted date/time as [createdAt] (not system time).
+  /// Returns the count of successfully saved transactions.
+  Future<int> addBatchTransactions({
+    required int storeId,
+    required int dailyFloatId,
+    required List<OcrResult> results,
+    required Map<String, MarkupSettingsModel> markupByType,
+    required String enteredByRole,
+    required ReceiptStorageService receiptStorage,
+    int? enteredByStaffId,
+  }) async {
+    _setLoading(true);
+    _clearError();
+    var savedCount = 0;
+    try {
+      final sorted = ReceiptParser.sortChronologically(results);
+      for (final result in sorted) {
+        try {
+          final markup = markupByType[result.transactionType!]!;
+          final markupEarned = MarkupCalculator.calculate(
+            amount: result.amountCentavos!,
+            rateType: markup.rateType,
+            rateValue: markup.rateValue,
+            bracketSize: markup.bracketSize,
+          );
+
+          final syncId = const Uuid().v4();
+
+          String? permanentPath;
+          if (result.imagePath.isNotEmpty) {
+            try {
+              permanentPath =
+                  await receiptStorage.saveReceipt(result.imagePath, syncId);
+            } catch (_) {
+              permanentPath = result.imagePath;
+            }
+          }
+
+          // Use receipt's extracted date/time, not system time
+          final receiptTs =
+              DateFormatter.toDbDateTime(result.transactionDateTime!);
+
+          final tx = TransactionModel(
+            storeId: storeId,
+            dailyFloatId: dailyFloatId,
+            transactionType: result.transactionType!,
+            amount: result.amountCentavos!,
+            markupRateTypeSnapshot: markup.rateType,
+            markupRateValueSnapshot: markup.rateValue,
+            markupBracketSizeSnapshot: markup.bracketSize,
+            markupEarned: markupEarned,
+            referenceNumber: result.referenceNumber,
+            receiptImagePath: permanentPath,
+            entryMethod: AppConstants.entryBatchOcr,
+            enteredByRole: enteredByRole,
+            enteredByStaffId: enteredByStaffId,
+            ocrConfidenceScore: result.confidence,
+            createdAt: receiptTs,
+            updatedAt: receiptTs,
+            syncId: syncId,
+          );
+
+          final id = await _txRepo.createTransaction(tx);
+          _transactions = [tx.copyWith(id: id), ..._transactions];
+          savedCount++;
+        } catch (_) {
+          // Skip failed individual transactions, continue the batch
+        }
+      }
+      _dailyTotals = await _txRepo.getDailyTotals(dailyFloatId);
+      notifyListeners();
+      return savedCount;
+    } catch (e) {
+      _setError('Failed to save batch transactions. Please try again.');
+      return savedCount;
     } finally {
       _setLoading(false);
     }
