@@ -16,7 +16,9 @@
       "Bash(\"%LOCALAPPDATA%/Android/Sdk/platform-tools/adb.exe\" connect:*)",
       "Bash(cmd:*)",
       "Bash(powershell:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   }
 }
