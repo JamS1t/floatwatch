@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/constants/app_constants.dart';
+import '../core/models/batch_item_analysis.dart';
 import '../core/services/ocr_result.dart';
 import '../core/services/receipt_parser.dart';
 import '../core/services/receipt_storage_service.dart';
@@ -10,6 +11,7 @@ import '../core/utils/date_formatter.dart';
 import '../core/utils/markup_calculator.dart';
 import '../data/models/markup_settings_model.dart';
 import '../data/models/transaction_model.dart';
+import '../data/repositories/interfaces/i_daily_float_repository.dart';
 import '../data/repositories/interfaces/i_transaction_repository.dart';
 
 /// TransactionProvider manages transaction data for the current day.
@@ -58,6 +60,9 @@ class TransactionProvider extends ChangeNotifier {
     _dailyTotals = await _txRepo.getDailyTotals(dailyFloatId);
     notifyListeners();
   }
+
+  Future<Map<String, int>> getDailyTotalsForFloat(int dailyFloatId) =>
+      _txRepo.getDailyTotals(dailyFloatId);
 
   // ── Add transaction ───────────────────────────────────────────────────────
 
@@ -141,21 +146,29 @@ class TransactionProvider extends ChangeNotifier {
     required String enteredByRole,
     required ReceiptStorageService receiptStorage,
     int? enteredByStaffId,
+    Set<int> skipIndices = const {},
+    Map<int, int> dailyFloatOverrides = const {},
   }) async {
+    // Note: markup overrides ride along inside each OcrResult.markupOverrideCentavos.
     _setLoading(true);
     _clearError();
     var savedCount = 0;
     try {
       final sorted = ReceiptParser.sortChronologically(results);
-      for (final result in sorted) {
+      for (var idx = 0; idx < sorted.length; idx++) {
+        if (skipIndices.contains(idx)) continue;
+        final result = sorted[idx];
         try {
           final markup = markupByType[result.transactionType!]!;
-          final markupEarned = MarkupCalculator.calculate(
+          final calculatedMarkup = MarkupCalculator.calculate(
             amount: result.amountCentavos!,
             rateType: markup.rateType,
             rateValue: markup.rateValue,
             bracketSize: markup.bracketSize,
           );
+          final overridden = result.markupOverrideCentavos != null;
+          final markupEarned =
+              overridden ? result.markupOverrideCentavos! : calculatedMarkup;
 
           final syncId = const Uuid().v4();
 
@@ -173,15 +186,18 @@ class TransactionProvider extends ChangeNotifier {
           final receiptTs =
               DateFormatter.toDbDateTime(result.transactionDateTime!);
 
+          final effectiveFloatId = dailyFloatOverrides[idx] ?? dailyFloatId;
+
           final tx = TransactionModel(
             storeId: storeId,
-            dailyFloatId: dailyFloatId,
+            dailyFloatId: effectiveFloatId,
             transactionType: result.transactionType!,
             amount: result.amountCentavos!,
             markupRateTypeSnapshot: markup.rateType,
             markupRateValueSnapshot: markup.rateValue,
             markupBracketSizeSnapshot: markup.bracketSize,
             markupEarned: markupEarned,
+            markupOverridden: overridden ? 1 : 0,
             referenceNumber: result.referenceNumber,
             receiptImagePath: permanentPath,
             entryMethod: AppConstants.entryBatchOcr,
@@ -194,12 +210,16 @@ class TransactionProvider extends ChangeNotifier {
           );
 
           final id = await _txRepo.createTransaction(tx);
-          _transactions = [tx.copyWith(id: id), ..._transactions];
+          // Only surface in the current view if it belongs to today's float.
+          if (effectiveFloatId == dailyFloatId) {
+            _transactions = [tx.copyWith(id: id), ..._transactions];
+          }
           savedCount++;
         } catch (_) {
           // Skip failed individual transactions, continue the batch
         }
       }
+      // Refresh totals for today's float (the primary view).
       _dailyTotals = await _txRepo.getDailyTotals(dailyFloatId);
       notifyListeners();
       return savedCount;
@@ -209,6 +229,105 @@ class TransactionProvider extends ChangeNotifier {
     } finally {
       _setLoading(false);
     }
+  }
+
+  // ── Duplicate detection ──────────────────────────────────────────────────
+
+  /// Check if a transaction with the same composite key already exists.
+  /// Returns the existing [TransactionModel] or null.
+  Future<TransactionModel?> checkDuplicate({
+    required int storeId,
+    required String referenceNumber,
+    required int amountCentavos,
+    required String transactionType,
+  }) {
+    return _txRepo.findDuplicate(
+      storeId: storeId,
+      referenceNumber: referenceNumber,
+      amount: amountCentavos,
+      transactionType: transactionType,
+    );
+  }
+
+  /// Analyze a batch of OCR results for duplicates and cross-date issues.
+  ///
+  /// Checks:
+  /// 1. Within-batch duplicates (same ref+amount+type appearing twice).
+  /// 2. DB duplicates via [findDuplicate].
+  /// 3. Cross-date: receipt date differs from [todayDate].
+  Future<List<BatchItemAnalysis>> analyzeBatch({
+    required int storeId,
+    required List<OcrResult> items,
+    required String todayDate,
+    required IDailyFloatRepository floatRepo,
+  }) async {
+    final results = <BatchItemAnalysis>[];
+    // Track composite keys seen within the batch for within-batch dedup.
+    final seenKeys = <String>{};
+
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
+      final ref = item.referenceNumber;
+      final amount = item.amountCentavos;
+      final type = item.transactionType;
+
+      // Items without ref numbers can't be deduped — always ready.
+      if (ref == null || ref.isEmpty || amount == null || type == null) {
+        results.add(BatchItemAnalysis(index: i, status: BatchItemStatus.ready));
+        continue;
+      }
+
+      final key = '$ref|$amount|$type';
+
+      // Within-batch duplicate (second occurrence).
+      if (seenKeys.contains(key)) {
+        results.add(BatchItemAnalysis(
+          index: i,
+          status: BatchItemStatus.duplicate,
+        ));
+        continue;
+      }
+      seenKeys.add(key);
+
+      // DB duplicate check.
+      final existing = await _txRepo.findDuplicate(
+        storeId: storeId,
+        referenceNumber: ref,
+        amount: amount,
+        transactionType: type,
+      );
+      if (existing != null) {
+        results.add(BatchItemAnalysis(
+          index: i,
+          status: BatchItemStatus.duplicate,
+          existingTxId: existing.id,
+        ));
+        continue;
+      }
+
+      // Cross-date check.
+      if (item.transactionDateTime != null) {
+        final receiptDate = DateFormatter.toDb(item.transactionDateTime!);
+        if (receiptDate != todayDate) {
+          final targetFloat =
+              await floatRepo.getDailyFloatByDate(storeId, receiptDate);
+          final isClosed = targetFloat?.closed ?? false;
+          results.add(BatchItemAnalysis(
+            index: i,
+            status: isClosed
+                ? BatchItemStatus.crossDateClosed
+                : BatchItemStatus.crossDate,
+            receiptDate: receiptDate,
+            dayIsClosed: isClosed,
+          ));
+          continue;
+        }
+      }
+
+      results.add(BatchItemAnalysis(index: i, status: BatchItemStatus.ready));
+    }
+
+    return results;
   }
 
   // ── Flag / unflag ─────────────────────────────────────────────────────────

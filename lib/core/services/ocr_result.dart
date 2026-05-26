@@ -12,6 +12,11 @@ class OcrResult {
   final bool needsManualReview;
   final String? reviewReason;
 
+  /// Owner-set override for markup earned, in centavos. Only used in the OCR
+  /// review screen; when set, replaces the calculated markup at save time.
+  /// Null means no override (use configured markup rule).
+  final int? markupOverrideCentavos;
+
   const OcrResult({
     required this.imagePath,
     required this.rawText,
@@ -24,6 +29,7 @@ class OcrResult {
     this.confidence = 0.0,
     this.needsManualReview = true,
     this.reviewReason,
+    this.markupOverrideCentavos,
   });
 
   OcrResult copyWith({
@@ -38,6 +44,8 @@ class OcrResult {
     double? confidence,
     bool? needsManualReview,
     String? reviewReason,
+    int? markupOverrideCentavos,
+    bool clearMarkupOverride = false,
   }) =>
       OcrResult(
         imagePath: imagePath ?? this.imagePath,
@@ -51,6 +59,9 @@ class OcrResult {
         confidence: confidence ?? this.confidence,
         needsManualReview: needsManualReview ?? this.needsManualReview,
         reviewReason: reviewReason ?? this.reviewReason,
+        markupOverrideCentavos: clearMarkupOverride
+            ? null
+            : (markupOverrideCentavos ?? this.markupOverrideCentavos),
       );
 
   @override

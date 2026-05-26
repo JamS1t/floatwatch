@@ -27,6 +27,7 @@ class _CreateOwnerAccountScreenState extends State<CreateOwnerAccountScreen> {
   final _confirmPinCtrl = TextEditingController();
   bool _obscurePin = true;
   bool _obscureConfirm = true;
+  bool _gcashSameAsMobile = false;
 
   String get _storeMode {
     final extra = GoRouterState.of(context).extra as Map<String, dynamic>?;
@@ -34,7 +35,32 @@ class _CreateOwnerAccountScreenState extends State<CreateOwnerAccountScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _mobileCtrl.addListener(_syncGcashIfMirrored);
+  }
+
+  void _syncGcashIfMirrored() {
+    if (_gcashSameAsMobile && _gcashCtrl.text != _mobileCtrl.text) {
+      _gcashCtrl.text = _mobileCtrl.text;
+    }
+  }
+
+  void _toggleGcashSameAsMobile(bool? checked) {
+    final next = checked ?? false;
+    setState(() {
+      _gcashSameAsMobile = next;
+      if (next) {
+        _gcashCtrl.text = _mobileCtrl.text;
+      } else {
+        _gcashCtrl.clear();
+      }
+    });
+  }
+
+  @override
   void dispose() {
+    _mobileCtrl.removeListener(_syncGcashIfMirrored);
     _nameCtrl.dispose();
     _mobileCtrl.dispose();
     _gcashCtrl.dispose();
@@ -122,10 +148,41 @@ class _CreateOwnerAccountScreenState extends State<CreateOwnerAccountScreen> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () => _toggleGcashSameAsMobile(!_gcashSameAsMobile),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: Checkbox(
+                              value: _gcashSameAsMobile,
+                              onChanged: _toggleGcashSameAsMobile,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'GCash number is the same as Mobile Number',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textPrimary,
+                                fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   TextFormField(
                     controller: _gcashCtrl,
                     keyboardType: TextInputType.phone,
+                    enabled: !_gcashSameAsMobile,
                     decoration: const InputDecoration(
                       labelText: 'GCash Number *',
                       hintText: '09XXXXXXXXX',

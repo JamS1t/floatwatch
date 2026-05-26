@@ -22,6 +22,10 @@ class TransactionModel {
   /// Markup income earned from this transaction, in centavos
   final int markupEarned;
 
+  /// 1 if the owner manually overrode the calculated markup, 0 otherwise.
+  /// Snapshot rate fields still reflect the configured rule at entry time.
+  final int markupOverridden;
+
   final String? referenceNumber;
   final String? receiptImagePath; // local file path
   final String? receiptImageSyncUrl; // TODO: Firebase Storage URL after upload
@@ -53,6 +57,7 @@ class TransactionModel {
     required this.markupRateValueSnapshot,
     this.markupBracketSizeSnapshot,
     required this.markupEarned,
+    this.markupOverridden = 0,
     this.referenceNumber,
     this.receiptImagePath,
     this.receiptImageSyncUrl,
@@ -79,6 +84,7 @@ class TransactionModel {
         markupRateValueSnapshot: map['markup_rate_value_snapshot'] as int,
         markupBracketSizeSnapshot: map['markup_bracket_size_snapshot'] as int?,
         markupEarned: map['markup_earned'] as int,
+        markupOverridden: map['markup_overridden'] as int? ?? 0,
         referenceNumber: map['reference_number'] as String?,
         receiptImagePath: map['receipt_image_path'] as String?,
         receiptImageSyncUrl: map['receipt_image_sync_url'] as String?,
@@ -105,6 +111,7 @@ class TransactionModel {
         'markup_rate_value_snapshot': markupRateValueSnapshot,
         'markup_bracket_size_snapshot': markupBracketSizeSnapshot,
         'markup_earned': markupEarned,
+        'markup_overridden': markupOverridden,
         'reference_number': referenceNumber,
         'receipt_image_path': receiptImagePath,
         'receipt_image_sync_url': receiptImageSyncUrl,
@@ -131,6 +138,7 @@ class TransactionModel {
     int? markupRateValueSnapshot,
     int? markupBracketSizeSnapshot,
     int? markupEarned,
+    int? markupOverridden,
     String? referenceNumber,
     String? receiptImagePath,
     String? receiptImageSyncUrl,
@@ -159,6 +167,7 @@ class TransactionModel {
         markupBracketSizeSnapshot:
             markupBracketSizeSnapshot ?? this.markupBracketSizeSnapshot,
         markupEarned: markupEarned ?? this.markupEarned,
+        markupOverridden: markupOverridden ?? this.markupOverridden,
         referenceNumber: referenceNumber ?? this.referenceNumber,
         receiptImagePath: receiptImagePath ?? this.receiptImagePath,
         receiptImageSyncUrl: receiptImageSyncUrl ?? this.receiptImageSyncUrl,
@@ -177,6 +186,7 @@ class TransactionModel {
 
   bool get flagged => isFlagged == 1;
   bool get usedOtp => oneTimePinUsed == 1;
+  bool get markupWasOverridden => markupOverridden == 1;
   bool get hasReceipt =>
       receiptImagePath != null && receiptImagePath!.isNotEmpty;
 

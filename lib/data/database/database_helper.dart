@@ -55,6 +55,11 @@ class DatabaseHelper {
         "ALTER TABLE owners ADD COLUMN gcash_number TEXT NOT NULL DEFAULT ''",
       );
     }
+    if (oldVersion < 3) {
+      await db.execute(
+        'ALTER TABLE transactions ADD COLUMN markup_overridden INTEGER NOT NULL DEFAULT 0',
+      );
+    }
   }
 
   // ── Table creation ────────────────────────────────────────────────────────
@@ -188,6 +193,7 @@ class DatabaseHelper {
         one_time_pin_used             INTEGER DEFAULT 0,
         is_flagged                    INTEGER DEFAULT 0,
         flag_reason                   TEXT,
+        markup_overridden             INTEGER NOT NULL DEFAULT 0,
         created_at                    TEXT    NOT NULL,
         updated_at                    TEXT    NOT NULL,
         sync_id                       TEXT    NOT NULL UNIQUE,
