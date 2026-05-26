@@ -88,13 +88,15 @@ class ReportProvider extends ChangeNotifier {
     required Map<String, int> totals,
     required String status,
     String? notes,
+    String? date,
   }) async {
     _setLoading(true);
+    final reportDate = date ?? DateFormatter.todayDb();
     try {
       // If the day was re-opened and closed again a report already exists —
       // update it instead of inserting a duplicate.
       final existing =
-          await _reportRepo.getDailyReportByDate(storeId, DateFormatter.todayDb());
+          await _reportRepo.getDailyReportByDate(storeId, reportDate);
 
       if (existing != null) {
         final updated = existing.copyWith(
@@ -119,7 +121,7 @@ class ReportProvider extends ChangeNotifier {
       final report = DailyReportModel(
         storeId: storeId,
         dailyFloatId: dailyFloatId,
-        date: DateFormatter.todayDb(),
+        date: reportDate,
         totalTransactions: totals['total_transactions'] ?? 0,
         totalCashInCount: totals['cash_in_count'] ?? 0,
         totalCashOutCount: totals['cash_out_count'] ?? 0,

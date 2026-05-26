@@ -146,6 +146,7 @@ class DailyFloatModel {
   bool get isClean => status == 'clean';
   bool get isWarning => status == 'warning';
   bool get isFlagged => status == 'flagged';
+  bool get isAutoClosed => status == 'auto_closed';
 
   @override
   String toString() => 'DailyFloatModel(id: $id, date: $date, status: $status)';

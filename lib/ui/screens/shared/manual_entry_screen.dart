@@ -203,6 +203,44 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
       }
     }
 
+    // ── Duplicate detection ──────────────────────────────────────────────
+    final refText = _refCtrl.text.trim();
+    if (refText.isNotEmpty) {
+      final existingTx = await txProv.checkDuplicate(
+        storeId: store.currentStore!.id!,
+        referenceNumber: refText,
+        amountCentavos: amountCentavos,
+        transactionType: _selectedType,
+      );
+      if (existingTx != null && mounted) {
+        final saveAnyway = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Possible Duplicate'),
+            content: Text(
+              'A transaction with the same reference number, amount, '
+              'and type already exists.\n\n'
+              'Ref: $refText\n'
+              'Amount: ${CurrencyFormatter.format(amountCentavos)}\n\n'
+              'Save anyway?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Save Anyway',
+                    style: TextStyle(color: AppColors.danger)),
+              ),
+            ],
+          ),
+        );
+        if (saveAnyway != true) return;
+      }
+    }
+
     final ok = await txProv.addTransaction(
       storeId: store.currentStore!.id!,
       dailyFloatId: float.todayFloat!.id!,
@@ -214,7 +252,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
           : AppConstants.entryManualStaff,
       enteredByRole: auth.isOwnerLoggedIn ? AppConstants.roleOwner : AppConstants.roleStaff,
       enteredByStaffId: auth.currentStaff?.id,
-      referenceNumber: _refCtrl.text.trim().isEmpty ? null : _refCtrl.text.trim(),
+      referenceNumber: refText.isEmpty ? null : refText,
     );
 
     if (!mounted) return;
@@ -415,10 +453,16 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                   TextFormField(
                     controller: _refCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Reference Number (optional)',
+                      labelText: 'Reference Number',
                       hintText: 'GCash reference #',
                       prefixIcon: Icon(Icons.tag_outlined),
                     ),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) {
+                        return 'Reference number is required';
+                      }
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 32),
                   PrimaryButton(

@@ -7,6 +7,7 @@ import 'core/services/receipt_storage_service.dart';
 import 'core/services/security_service.dart';
 import 'core/services/subscription_service.dart';
 import 'data/database/database_helper.dart';
+import 'data/repositories/interfaces/i_daily_float_repository.dart';
 import 'data/repositories/interfaces/i_staff_repository.dart';
 import 'data/repositories/local/local_daily_float_repository.dart';
 import 'data/repositories/local/local_owner_repository.dart';
@@ -57,6 +58,7 @@ void main() async {
         Provider<ReceiptStorageService>.value(value: ReceiptStorageService()),
         // Repositories exposed for screens that need direct DB access
         Provider<IStaffRepository>.value(value: staffRepo),
+        Provider<IDailyFloatRepository>.value(value: dailyFloatRepo),
 
         // State providers
         ChangeNotifierProvider(

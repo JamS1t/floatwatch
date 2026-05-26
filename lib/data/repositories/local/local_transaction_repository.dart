@@ -201,4 +201,22 @@ class LocalTransactionRepository implements ITransactionRepository {
       'total_markup_earned': (row['total_markup_earned'] as int?) ?? 0,
     };
   }
+
+  @override
+  Future<TransactionModel?> findDuplicate({
+    required int storeId,
+    required String referenceNumber,
+    required int amount,
+    required String transactionType,
+  }) async {
+    final db = await _db.database;
+    final rows = await db.query(
+      _table,
+      where:
+          'store_id = ? AND reference_number = ? AND amount = ? AND transaction_type = ?',
+      whereArgs: [storeId, referenceNumber, amount, transactionType],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : TransactionModel.fromMap(rows.first);
+  }
 }

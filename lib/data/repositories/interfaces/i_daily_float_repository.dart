@@ -34,4 +34,10 @@ abstract class IDailyFloatRepository {
 
   /// Re-open a closed day: resets is_closed, clears closing fields, status → 'open'.
   Future<void> reopenDay(int dailyFloatId);
+
+  /// Mark as auto-closed by the system (no physical count done).
+  Future<void> autoCloseDay(int dailyFloatId);
+
+  /// All floats before today that are still open (is_closed = 0).
+  Future<List<DailyFloatModel>> getUnclosedPastFloats(int storeId);
 }

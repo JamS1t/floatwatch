@@ -16,11 +16,13 @@ class DailyFloatProvider extends ChangeNotifier {
   // ── State ─────────────────────────────────────────────────────────────────
   DailyFloatModel? _todayFloat;
   List<DailyFloatModel> _recentFloats = [];
+  List<DailyFloatModel> _unclosedPastFloats = [];
   bool _isLoading = false;
   String? _error;
 
   DailyFloatModel? get todayFloat => _todayFloat;
   List<DailyFloatModel> get recentFloats => List.unmodifiable(_recentFloats);
+  List<DailyFloatModel> get unclosedPastFloats => List.unmodifiable(_unclosedPastFloats);
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isDayOpen => _todayFloat != null && !_todayFloat!.closed;
@@ -192,6 +194,118 @@ class DailyFloatProvider extends ChangeNotifier {
       return false;
     } finally {
       _setLoading(false);
+    }
+  }
+
+  // ── Cross-date helpers ──────────────────────────────────────────────────
+
+  /// Get the daily_float record for a specific date (may be null).
+  Future<DailyFloatModel?> getFloatByDate(int storeId, String dateStr) async {
+    return _floatRepo.getDailyFloatByDate(storeId, dateStr);
+  }
+
+  /// Get existing daily_float for a date, or create a new open one if none exists.
+  /// Also updates [_recentFloats] so history screens reflect the new record immediately.
+  Future<DailyFloatModel> getOrCreateFloatForDate(
+      int storeId, String dateStr) async {
+    final existing = await _floatRepo.getDailyFloatByDate(storeId, dateStr);
+    if (existing != null) return existing;
+
+    final now = DateFormatter.nowDb();
+    final float = DailyFloatModel(
+      storeId: storeId,
+      date: dateStr,
+      status: 'open',
+      createdAt: now,
+      updatedAt: now,
+      syncId: const Uuid().v4(),
+    );
+    final id = await _floatRepo.createDailyFloat(float);
+    final saved = float.copyWith(id: id);
+
+    // Keep _recentFloats up to date so history/report screens see the new float.
+    _recentFloats = [..._recentFloats, saved]
+      ..sort((a, b) => b.date.compareTo(a.date));
+    notifyListeners();
+
+    return saved;
+  }
+
+  /// Reopen a specific closed day by its id (for cross-date receipt routing).
+  Future<bool> reopenDayById(int dailyFloatId) async {
+    try {
+      await _floatRepo.reopenDay(dailyFloatId);
+      return true;
+    } catch (e) {
+      _setError('Failed to re-open the day.');
+      return false;
+    }
+  }
+
+  // ── Unclosed past floats ──────────────────────────────────────────────────
+
+  Future<void> loadUnclosedPastFloats(int storeId) async {
+    try {
+      _unclosedPastFloats = await _floatRepo.getUnclosedPastFloats(storeId);
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// Silently mark a system-created float as auto_closed.
+  Future<void> autoCloseFloat(int dailyFloatId) async {
+    try {
+      await _floatRepo.autoCloseDay(dailyFloatId);
+      _recentFloats = _recentFloats.map((f) {
+        if (f.id == dailyFloatId) return f.copyWith(isClosed: 1, status: 'auto_closed');
+        return f;
+      }).toList();
+      _unclosedPastFloats.removeWhere((f) => f.id == dailyFloatId);
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// Close a past-day float (not today) with physical count data.
+  /// Returns true on success. Does NOT set _todayFloat.
+  Future<bool> closePastDay({
+    required DailyFloatModel float,
+    required int closingGcash,
+    required int closingCash,
+    required Map<String, int> dailyTotals,
+  }) async {
+    if (float.id == null) return false;
+    try {
+      final expectedGcash = MarkupCalculator.expectedClosingGcash(
+        openingGcash: float.openingGcashBalance ?? 0,
+        totalCashIn: dailyTotals['total_cash_in'] ?? 0,
+        totalCashOut: dailyTotals['total_cash_out'] ?? 0,
+        totalBillsPayment: dailyTotals['total_bills_payment'] ?? 0,
+        totalLoadOthers: dailyTotals['total_load_others'] ?? 0,
+      );
+      final discrepancyGcash = closingGcash - expectedGcash;
+      final discrepancyCash = closingCash -
+          ((float.openingCash ?? 0) +
+              (dailyTotals['total_cash_in'] ?? 0) +
+              (dailyTotals['total_bills_payment'] ?? 0) +
+              (dailyTotals['total_load_others'] ?? 0) -
+              (dailyTotals['total_cash_out'] ?? 0));
+      final status = MarkupCalculator.discrepancyStatus(discrepancyGcash);
+
+      await _floatRepo.setClosingBalance(
+        dailyFloatId: float.id!,
+        gcashBalance: closingGcash,
+        cashBalance: closingCash,
+        expectedGcash: expectedGcash,
+        discrepancyGcash: discrepancyGcash,
+        discrepancyCash: discrepancyCash,
+        status: status,
+      );
+      await _floatRepo.closeDay(float.id!);
+
+      _unclosedPastFloats.removeWhere((f) => f.id == float.id);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      return false;
     }
   }
 

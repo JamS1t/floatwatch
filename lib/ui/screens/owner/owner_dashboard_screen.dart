@@ -3,9 +3,13 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../../../core/utils/markup_calculator.dart';
+import '../../../data/models/daily_float_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/daily_float_provider.dart';
+import '../../../providers/report_provider.dart';
 import '../../../providers/store_provider.dart';
 import '../../../providers/transaction_provider.dart';
 import '../../../routes.dart';
@@ -26,6 +30,29 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+  }
+
+  Future<void> _showClosePastDaySheet(DailyFloatModel float) async {
+    final floatProvider = context.read<DailyFloatProvider>();
+    final txProvider = context.read<TransactionProvider>();
+    final reportProvider = context.read<ReportProvider>();
+    final storeProvider = context.read<StoreProvider>();
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetCtx) => _ClosePastDaySheet(
+        float: float,
+        floatProvider: floatProvider,
+        txProvider: txProvider,
+        reportProvider: reportProvider,
+        storeProvider: storeProvider,
+        onClosed: _loadData,
+      ),
+    );
   }
 
   Future<void> _confirmReopen() async {
@@ -66,6 +93,7 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
     final storeId = store.currentStore?.id;
     if (storeId != null) {
       await float.loadTodayFloat(storeId);
+      await float.loadUnclosedPastFloats(storeId);
       if (float.todayFloat?.id != null) {
         await tx.loadTransactionsForDay(float.todayFloat!.id!);
       }
@@ -110,6 +138,14 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // ── Unclosed past days banner ─────────────────────────────────
+            if (float.unclosedPastFloats.isNotEmpty)
+              _UnclosedDaysBanner(
+                floats: float.unclosedPastFloats,
+                onClose: (f) => _showClosePastDaySheet(f),
+              ),
+            if (float.unclosedPastFloats.isNotEmpty) const SizedBox(height: 12),
+
             // ── Profit summary ────────────────────────────────────────────
             ProfitSummaryCard(
               markupEarned: tx.totalMarkupEarned,
@@ -263,6 +299,289 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
     );
   }
 }
+
+// ── Unclosed days banner ──────────────────────────────────────────────────────
+
+class _UnclosedDaysBanner extends StatelessWidget {
+  final List<DailyFloatModel> floats;
+  final void Function(DailyFloatModel) onClose;
+
+  const _UnclosedDaysBanner({required this.floats, required this.onClose});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF59E0B)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded,
+                  size: 16, color: Color(0xFFF59E0B)),
+              const SizedBox(width: 6),
+              Text(
+                '${floats.length} unclosed day${floats.length > 1 ? 's' : ''} need${floats.length == 1 ? 's' : ''} attention',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF92400E),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...floats.map((f) => Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_today_outlined,
+                        size: 13, color: Color(0xFF92400E)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        DateFormatter.toDisplay(DateTime.parse(f.date)),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF78350F),
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => onClose(f),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        foregroundColor: const Color(0xFFB45309),
+                      ),
+                      child: const Text('Close',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Close past day sheet ──────────────────────────────────────────────────────
+
+class _ClosePastDaySheet extends StatefulWidget {
+  final DailyFloatModel float;
+  final DailyFloatProvider floatProvider;
+  final TransactionProvider txProvider;
+  final ReportProvider reportProvider;
+  final StoreProvider storeProvider;
+  final Future<void> Function() onClosed;
+
+  const _ClosePastDaySheet({
+    required this.float,
+    required this.floatProvider,
+    required this.txProvider,
+    required this.reportProvider,
+    required this.storeProvider,
+    required this.onClosed,
+  });
+
+  @override
+  State<_ClosePastDaySheet> createState() => _ClosePastDaySheetState();
+}
+
+class _ClosePastDaySheetState extends State<_ClosePastDaySheet> {
+  Map<String, int>? _totals;
+  bool _isLoading = true;
+  bool _isSaving = false;
+  final _gcashCtrl = TextEditingController();
+  final _cashCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTotals();
+  }
+
+  @override
+  void dispose() {
+    _gcashCtrl.dispose();
+    _cashCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadTotals() async {
+    final totals = await widget.txProvider.getDailyTotalsForFloat(widget.float.id!);
+    if (mounted) setState(() { _totals = totals; _isLoading = false; });
+  }
+
+  Future<void> _closeDay() async {
+    final gcashPesos = double.tryParse(_gcashCtrl.text.replaceAll(',', ''));
+    final cashPesos = double.tryParse(_cashCtrl.text.replaceAll(',', ''));
+    if (gcashPesos == null || cashPesos == null || _totals == null) return;
+
+    final closingGcash = (gcashPesos * 100).round();
+    final closingCash = (cashPesos * 100).round();
+
+    // Compute status for the report
+    final expectedGcash = MarkupCalculator.expectedClosingGcash(
+      openingGcash: widget.float.openingGcashBalance ?? 0,
+      totalCashIn: _totals!['total_cash_in'] ?? 0,
+      totalCashOut: _totals!['total_cash_out'] ?? 0,
+      totalBillsPayment: _totals!['total_bills_payment'] ?? 0,
+      totalLoadOthers: _totals!['total_load_others'] ?? 0,
+    );
+    final resultStatus = MarkupCalculator.discrepancyStatus(closingGcash - expectedGcash);
+
+    setState(() => _isSaving = true);
+    final success = await widget.floatProvider.closePastDay(
+      float: widget.float,
+      closingGcash: closingGcash,
+      closingCash: closingCash,
+      dailyTotals: _totals!,
+    );
+
+    if (success) {
+      final storeId = widget.storeProvider.currentStore?.id;
+      if (storeId != null) {
+        await widget.reportProvider.createDailyReport(
+          storeId: storeId,
+          dailyFloatId: widget.float.id!,
+          totals: _totals!,
+          status: resultStatus,
+          date: widget.float.date,
+        );
+      }
+    }
+
+    if (mounted) {
+      Navigator.pop(context);
+      await widget.onClosed();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateLabel = DateFormatter.toDisplay(DateTime.parse(widget.float.date));
+    final totals = _totals;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.55,
+        minChildSize: 0.4,
+        maxChildSize: 0.85,
+        expand: false,
+        builder: (_, scrollCtrl) => SingleChildScrollView(
+          controller: scrollCtrl,
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text('Close Day — $dateLabel',
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary)),
+              const SizedBox(height: 4),
+              if (_isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else ...[
+                Text(
+                  '${totals?['total_transactions'] ?? 0} transaction(s) recorded',
+                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Expected GCash: ${CurrencyFormatter.format(MarkupCalculator.expectedClosingGcash(
+                    openingGcash: widget.float.openingGcashBalance ?? 0,
+                    totalCashIn: totals?['total_cash_in'] ?? 0,
+                    totalCashOut: totals?['total_cash_out'] ?? 0,
+                    totalBillsPayment: totals?['total_bills_payment'] ?? 0,
+                    totalLoadOthers: totals?['total_load_others'] ?? 0,
+                  ))}',
+                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 20),
+                const Text('Actual GCash Balance (₱)',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textSecondary)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _gcashCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    prefixText: '₱ ',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('Actual Cash on Hand (₱)',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textSecondary)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _cashCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    prefixText: '₱ ',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isSaving ? null : _closeDay,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: Text(_isSaving ? 'Closing...' : 'Close Day',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 15)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Transaction row ───────────────────────────────────────────────────────────
 
 class _TxRow extends StatelessWidget {
   final String type;

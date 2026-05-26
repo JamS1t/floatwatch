@@ -183,4 +183,35 @@ class LocalDailyFloatRepository implements IDailyFloatRepository {
       action: 'update',
     );
   }
+
+  @override
+  Future<void> autoCloseDay(int dailyFloatId) async {
+    final float = await getDailyFloat(dailyFloatId);
+    if (float == null) return;
+    final db = await _db.database;
+    await db.update(
+      _table,
+      {'is_closed': 1, 'status': 'auto_closed', 'updated_at': DateFormatter.nowDb()},
+      where: 'id = ?',
+      whereArgs: [dailyFloatId],
+    );
+    await _syncLog.log(
+      tableName: _table,
+      recordSyncId: float.syncId,
+      action: 'update',
+    );
+  }
+
+  @override
+  Future<List<DailyFloatModel>> getUnclosedPastFloats(int storeId) async {
+    final db = await _db.database;
+    final today = DateFormatter.todayDb();
+    final rows = await db.query(
+      _table,
+      where: 'store_id = ? AND date < ? AND is_closed = 0',
+      whereArgs: [storeId, today],
+      orderBy: 'date DESC',
+    );
+    return rows.map(DailyFloatModel.fromMap).toList();
+  }
 }
